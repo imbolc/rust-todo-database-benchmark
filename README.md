@@ -3,12 +3,12 @@
 This project benchmarks three local databases through five Rust adapters and
 six runnable configurations:
 
-| Database   | Adapter                             | Async |
-| ---------- | ----------------------------------- | ----- |
-| PostgreSQL | `tokio-postgres`                    | Yes   |
-| PostgreSQL | SQLx                                | Yes   |
-| SQLite     | `rusqlite`                          | No    |
-| SQLite     | SQLx                                | Yes   |
+| Database   | Adapter                            | Async |
+| ---------- | ---------------------------------- | ----- |
+| PostgreSQL | `tokio-postgres`                   | Yes   |
+| PostgreSQL | SQLx                               | Yes   |
+| SQLite     | `rusqlite`                         | No    |
+| SQLite     | SQLx                               | Yes   |
 | Turso      | Native `turso` crate, WAL and MVCC | Yes   |
 
 `Async` describes the driver API used by the benchmark. SQLx exposes an async
