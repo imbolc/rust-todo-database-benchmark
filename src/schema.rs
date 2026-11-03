@@ -47,28 +47,27 @@ CREATE INDEX todo_tags_by_tag
 "#;
 
 pub const SQLITE_SCHEMA: &str = r#"
-PRAGMA foreign_keys = OFF;
+PRAGMA foreign_keys = ON;
 DROP TABLE IF EXISTS todo_tags;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS todos;
 DROP TABLE IF EXISTS users;
-PRAGMA foreign_keys = ON;
 
 CREATE TABLE users (
     id          INTEGER PRIMARY KEY,
     email       TEXT NOT NULL UNIQUE,
     created_at  INTEGER NOT NULL
-);
+) STRICT;
 
 CREATE TABLE todos (
     id          INTEGER PRIMARY KEY,
     user_id     INTEGER NOT NULL REFERENCES users(id),
     title       TEXT NOT NULL,
-    completed   INTEGER NOT NULL DEFAULT 0,
+    completed   INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL,
     UNIQUE (user_id, id)
-);
+) STRICT;
 
 CREATE INDEX todos_user_status_created
     ON todos(user_id, completed, created_at DESC);
@@ -79,7 +78,7 @@ CREATE TABLE tags (
     name        TEXT NOT NULL,
     UNIQUE (user_id, name),
     UNIQUE (user_id, id)
-);
+) STRICT;
 
 CREATE TABLE todo_tags (
     user_id     INTEGER NOT NULL,
@@ -90,7 +89,7 @@ CREATE TABLE todo_tags (
         REFERENCES todos(user_id, id) ON DELETE CASCADE,
     FOREIGN KEY (user_id, tag_id)
         REFERENCES tags(user_id, id) ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE INDEX todo_tags_by_tag
     ON todo_tags(tag_id, todo_id);

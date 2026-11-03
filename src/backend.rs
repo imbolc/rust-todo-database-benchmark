@@ -107,7 +107,7 @@ impl Backend {
                         .context("open local Turso database")?,
                 );
                 let mut connection = database.connect().context("connect to Turso")?;
-                configure_turso_synchronous(&connection, self.durability).await?;
+                configure_turso(&connection, self.durability).await?;
                 self.turso = Some(database);
                 seed_turso(&mut connection, fixture).await?;
                 set_turso_journal_mode(&connection, self.kind == BackendKind::TursoMvcc).await
@@ -140,7 +140,7 @@ impl Backend {
                     .expect("Turso database is set")
                     .connect()
                     .context("connect Turso benchmark worker")?;
-                configure_turso_synchronous(&connection, self.durability).await?;
+                configure_turso(&connection, self.durability).await?;
                 verify_turso_journal_mode(&connection, self.kind == BackendKind::TursoMvcc).await?;
                 Ok(Worker::Turso(
                     TursoWorker::from_connection(connection, self.kind == BackendKind::TursoMvcc)
@@ -622,9 +622,14 @@ fn sqlite_options(path: &Path, durability: Durability) -> SqliteConnectOptions {
 }
 
 async fn open_sqlx_sqlite(path: &Path, durability: Durability) -> Result<SqliteConnection> {
-    SqliteConnection::connect_with(&sqlite_options(path, durability))
+    let mut connection = SqliteConnection::connect_with(&sqlite_options(path, durability))
         .await
-        .with_context(|| format!("open SQLite with SQLx at {}", path.display()))
+        .with_context(|| format!("open SQLite with SQLx at {}", path.display()))?;
+    let foreign_keys: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+        .fetch_one(&mut connection)
+        .await?;
+    anyhow::ensure!(foreign_keys == 1, "SQLx SQLite foreign keys are disabled");
+    Ok(connection)
 }
 
 fn open_rusqlite(path: &Path, durability: Durability) -> Result<RusqliteConnection> {
@@ -633,6 +638,9 @@ fn open_rusqlite(path: &Path, durability: Durability) -> Result<RusqliteConnecti
     connection.busy_timeout(BUSY_TIMEOUT)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
     connection.pragma_update(None, "foreign_keys", "ON")?;
+    let foreign_keys: i64 =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    anyhow::ensure!(foreign_keys == 1, "rusqlite foreign keys are disabled");
     let synchronous = match durability {
         Durability::Durable => "FULL",
         Durability::WriteOptimized => "NORMAL",
@@ -642,18 +650,24 @@ fn open_rusqlite(path: &Path, durability: Durability) -> Result<RusqliteConnecti
     Ok(connection)
 }
 
-async fn configure_turso_synchronous(
-    connection: &TursoConnection,
-    durability: Durability,
-) -> Result<()> {
+async fn configure_turso(connection: &TursoConnection, durability: Durability) -> Result<()> {
     connection.busy_timeout(BUSY_TIMEOUT)?;
     let (synchronous, expected) = match durability {
         Durability::Durable => ("FULL", 2),
         Durability::WriteOptimized => ("NORMAL", 1),
     };
     connection
-        .execute_batch(format!("PRAGMA synchronous = {synchronous}"))
+        .execute_batch(format!(
+            "PRAGMA foreign_keys = ON; PRAGMA synchronous = {synchronous};"
+        ))
         .await?;
+    let mut rows = connection.query("PRAGMA foreign_keys", ()).await?;
+    let foreign_keys = rows
+        .next()
+        .await?
+        .ok_or_else(|| anyhow!("Turso PRAGMA foreign_keys returned no value"))?
+        .get::<i64>(0)?;
+    anyhow::ensure!(foreign_keys == 1, "Turso foreign keys are disabled");
     let mut rows = connection.query("PRAGMA synchronous", ()).await?;
     let actual = rows
         .next()
@@ -1292,4 +1306,86 @@ async fn execute_sqlx_sqlite(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn execute_sql(worker: &mut Worker, sql: &'static str) -> Result<()> {
+        match worker {
+            Worker::SqliteNative(connection) => connection.execute_batch(sql)?,
+            Worker::SqliteSqlx(connection) => {
+                sqlx::raw_sql(sql).execute(connection).await?;
+            }
+            Worker::Turso(worker) => worker.connection.execute_batch(sql).await?,
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn embedded_workers_enforce_integrity() -> Result<()> {
+        let var_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("var/integrity-checks")
+            .join(std::process::id().to_string());
+        let fixture = FixtureConfig {
+            users: 2,
+            todos_per_user: 2,
+            tags_per_user: 3,
+            tags_per_todo: 2,
+        };
+        for durability in [Durability::Durable, Durability::WriteOptimized] {
+            for kind in [
+                BackendKind::SqliteNative,
+                BackendKind::SqliteSqlx,
+                BackendKind::Turso,
+                BackendKind::TursoMvcc,
+            ] {
+                let mut backend = Backend::open(kind, &var_dir, 55432, durability).await?;
+                backend.reset_and_seed(&fixture).await?;
+                let mut worker = backend.connect_worker().await?;
+
+                for sql in [
+                    "UPDATE users SET created_at = 'invalid' WHERE id = 1",
+                    "UPDATE todos SET updated_at = 0.5 WHERE id = 1",
+                    "UPDATE tags SET name = x'00' WHERE id = 1",
+                    "UPDATE todo_tags SET tag_id = 'invalid' WHERE todo_id = 1",
+                    "UPDATE todos SET completed = 2 WHERE id = 1",
+                    "UPDATE todos SET completed = -1 WHERE id = 1",
+                    "UPDATE todos SET completed = NULL WHERE id = 1",
+                    "UPDATE todos SET user_id = 3 WHERE id = 1",
+                    "UPDATE tags SET user_id = 3 WHERE id = 1",
+                    "INSERT INTO todo_tags VALUES (2, 1, 4)",
+                    "INSERT INTO todo_tags VALUES (1, 1, 4)",
+                    "DELETE FROM users WHERE id = 1",
+                    "UPDATE users SET email = 'user-2@example.test' WHERE id = 1",
+                ] {
+                    assert!(
+                        execute_sql(&mut worker, sql).await.is_err(),
+                        "{kind}/{durability:?} accepted invalid write: {sql}"
+                    );
+                }
+
+                // Reusing the association's primary key requires both cascades to remove it.
+                execute_sql(
+                    &mut worker,
+                    "DELETE FROM todos WHERE id = 1; \
+                     INSERT INTO todos (id, user_id, title, created_at, updated_at) \
+                         VALUES (1, 1, 'restored', 0, 0); \
+                     INSERT INTO todo_tags VALUES (1, 1, 1); \
+                     DELETE FROM tags WHERE id = 1; \
+                     INSERT INTO tags VALUES (1, 1, 'restored'); \
+                     INSERT INTO todo_tags VALUES (1, 1, 1);",
+                )
+                .await
+                .with_context(|| format!("{kind}/{durability:?} cascading deletes"))?;
+
+                execute_sql(&mut worker, SQLITE_SCHEMA)
+                    .await
+                    .with_context(|| format!("{kind}/{durability:?} schema reset"))?;
+            }
+        }
+        Ok(())
+    }
 }
