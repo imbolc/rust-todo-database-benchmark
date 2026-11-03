@@ -2,6 +2,7 @@ mod backend;
 mod benchmark;
 mod model;
 mod schema;
+mod typedb;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,8 +15,11 @@ use benchmark::{Report, run_case};
 use clap::Parser;
 use model::{Durability, FixtureConfig, parse_backends, parse_concurrency, parse_workloads};
 
-#[derive(Debug, Parser)]
-#[command(version, about = "Local PostgreSQL, SQLite, Turso, and SQLx benchmark")]
+#[derive(clap::Parser)]
+#[command(
+    version,
+    about = "Local PostgreSQL, SQLite, Turso, TypeDB, and SQLx benchmark"
+)]
 struct Cli {
     /// Comma-separated backend names, or "all".
     #[arg(long, default_value = "all")]
@@ -51,6 +55,7 @@ struct Cli {
     #[arg(long)]
     reuse_fixture: bool,
 
+    /// SQLite/Turso sync profile; PostgreSQL and TypeDB use server settings.
     #[arg(long, value_enum, default_value_t = Durability::WriteOptimized)]
     durability: Durability,
 
@@ -59,6 +64,9 @@ struct Cli {
 
     #[arg(long, default_value_t = 55432)]
     postgres_port: u16,
+
+    #[command(flatten)]
+    typedb: typedb::TypeDbConfig,
 
     #[arg(long, default_value = "var/results.json")]
     output: PathBuf,
@@ -99,6 +107,7 @@ async fn main() -> Result<()> {
             &cli.var_dir,
             cli.postgres_port,
             cli.durability,
+            &cli.typedb,
         )
         .await
         .with_context(|| format!("open {backend_kind}"))?;

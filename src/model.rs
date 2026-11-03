@@ -2,9 +2,8 @@ use std::fmt;
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::ValueEnum;
-use serde::Serialize;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
     PostgresNative,
@@ -13,16 +12,18 @@ pub enum BackendKind {
     SqliteSqlx,
     Turso,
     TursoMvcc,
+    Typedb,
 }
 
 impl BackendKind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::PostgresNative,
         Self::PostgresSqlx,
         Self::SqliteNative,
         Self::SqliteSqlx,
         Self::Turso,
         Self::TursoMvcc,
+        Self::Typedb,
     ];
 
     pub fn is_postgres(self) -> bool {
@@ -34,6 +35,7 @@ impl BackendKind {
             Self::PostgresNative | Self::PostgresSqlx => "postgres",
             Self::SqliteNative | Self::SqliteSqlx => "sqlite",
             Self::Turso | Self::TursoMvcc => "turso",
+            Self::Typedb => "typedb",
         }
     }
 
@@ -43,6 +45,7 @@ impl BackendKind {
             Self::PostgresSqlx | Self::SqliteSqlx => "sqlx",
             Self::SqliteNative => "rusqlite",
             Self::Turso | Self::TursoMvcc => "turso",
+            Self::Typedb => "typedb-driver",
         }
     }
 }
@@ -56,12 +59,13 @@ impl fmt::Display for BackendKind {
             Self::SqliteSqlx => "sqlite-sqlx",
             Self::Turso => "turso",
             Self::TursoMvcc => "turso-mvcc",
+            Self::Typedb => "typedb",
         };
         f.write_str(value)
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Workload {
     BasicWrite,
@@ -72,7 +76,7 @@ pub enum Workload {
     Balanced,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Durability {
     Durable,
@@ -113,7 +117,7 @@ impl fmt::Display for Workload {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct FixtureConfig {
     pub users: u64,
     pub todos_per_user: u64,

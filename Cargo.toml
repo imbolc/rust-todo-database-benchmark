@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
-clap = { version = "4.5.46", features = ["derive"] }
+clap = { version = "4.5.46", features = ["derive", "env"] }
+futures-util = "0.3.31"
 hdrhistogram = "7.5.4"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -14,3 +15,4 @@ sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 tokio-postgres = "0.7.18"
 turso = { version = "0.7.2", default-features = false }
+typedb-driver = "3.14.0"

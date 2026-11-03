@@ -15,6 +15,7 @@ use turso::{
 
 use crate::model::{BackendKind, Durability, FixtureConfig, Operation};
 use crate::schema::{POSTGRES_SCHEMA, SQLITE_SCHEMA};
+use crate::typedb::{TypeDb, TypeDbConfig};
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 const SEED_USERS_PER_TRANSACTION: usize = 100;
@@ -26,6 +27,7 @@ pub struct Backend {
     path: Option<PathBuf>,
     durability: Durability,
     turso: Option<Arc<TursoDatabase>>,
+    typedb: Option<TypeDb>,
 }
 
 impl Backend {
@@ -34,6 +36,7 @@ impl Backend {
         var_dir: &Path,
         postgres_port: u16,
         durability: Durability,
+        typedb_config: &TypeDbConfig,
     ) -> Result<Self> {
         std::fs::create_dir_all(var_dir)
             .with_context(|| format!("create {}", var_dir.display()))?;
@@ -46,6 +49,13 @@ impl Backend {
             BackendKind::SqliteSqlx => Some(var_dir.join("sqlite-sqlx.db")),
             BackendKind::Turso => Some(var_dir.join("turso.db")),
             BackendKind::TursoMvcc => Some(var_dir.join("turso-mvcc.db")),
+            BackendKind::Typedb => None,
+        };
+
+        let typedb = if kind == BackendKind::Typedb {
+            Some(TypeDb::connect(typedb_config).await?)
+        } else {
+            None
         };
 
         Ok(Self {
@@ -55,6 +65,7 @@ impl Backend {
             path,
             durability,
             turso: None,
+            typedb,
         })
     }
 
@@ -63,14 +74,24 @@ impl Backend {
     }
 
     pub fn storage(&self) -> String {
+        if let Some(typedb) = &self.typedb {
+            return typedb.storage();
+        }
         self.path
             .as_ref()
             .map(|path| path.display().to_string())
-            .expect("every backend has a storage path")
+            .expect("embedded and PostgreSQL backends have a storage path")
     }
 
     pub async fn reset_and_seed(&mut self, fixture: &FixtureConfig) -> Result<()> {
         match self.kind {
+            BackendKind::Typedb => {
+                self.typedb
+                    .as_ref()
+                    .expect("TypeDB driver is set")
+                    .reset_and_seed(fixture)
+                    .await
+            }
             BackendKind::PostgresNative => {
                 let mut client =
                     connect_pg_native(&self.postgres_socket, self.postgres_port).await?;
@@ -117,6 +138,9 @@ impl Backend {
 
     pub async fn connect_worker(&self) -> Result<Worker> {
         match self.kind {
+            BackendKind::Typedb => Ok(Worker::Typedb(
+                self.typedb.as_ref().expect("TypeDB driver is set").clone(),
+            )),
             BackendKind::PostgresNative => Ok(Worker::PostgresNative(
                 PgNativeWorker::connect(&self.postgres_socket, self.postgres_port).await?,
             )),
@@ -157,11 +181,13 @@ pub enum Worker {
     SqliteNative(RusqliteConnection),
     SqliteSqlx(SqliteConnection),
     Turso(TursoWorker),
+    Typedb(TypeDb),
 }
 
 impl Worker {
     pub async fn execute(&mut self, operation: &Operation) -> Result<()> {
         match self {
+            Self::Typedb(worker) => worker.execute(operation).await,
             Self::PostgresNative(worker) => worker.execute(operation).await,
             Self::PostgresSqlx(connection) => execute_pg_sqlx(connection, operation).await,
             Self::SqliteNative(connection) => {
@@ -1310,6 +1336,8 @@ async fn execute_sqlx_sqlite(
 
 #[cfg(test)]
 mod tests {
+    use clap::Parser as _;
+
     use super::*;
 
     async fn execute_sql(worker: &mut Worker, sql: &'static str) -> Result<()> {
@@ -1335,6 +1363,7 @@ mod tests {
             tags_per_user: 3,
             tags_per_todo: 2,
         };
+        let typedb_config = crate::Cli::parse_from(["benchmark"]).typedb;
         for durability in [Durability::Durable, Durability::WriteOptimized] {
             for kind in [
                 BackendKind::SqliteNative,
@@ -1342,7 +1371,8 @@ mod tests {
                 BackendKind::Turso,
                 BackendKind::TursoMvcc,
             ] {
-                let mut backend = Backend::open(kind, &var_dir, 55432, durability).await?;
+                let mut backend =
+                    Backend::open(kind, &var_dir, 55432, durability, &typedb_config).await?;
                 backend.reset_and_seed(&fixture).await?;
                 let mut worker = backend.connect_worker().await?;
 

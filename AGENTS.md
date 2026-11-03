@@ -31,13 +31,6 @@
     rumdl fmt -q .
     ```
 
-Build release binaries only when explicitly requested or required to execute an
-authorized benchmark/run with updated code. "Ready for the next run" alone does
-not authorize a release build.
-
-When providing commands to run workspace binaries, always use
-`cargo run --release -p <crate> -- <arguments>`.
-
 ### Style
 
 - Use fully qualified paths for derive macros from external crates
