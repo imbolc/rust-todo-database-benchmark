@@ -1,5 +1,25 @@
 # PostgreSQL vs SQLite vs Turso vs TypeDB
 
+The charts show medians for the balanced workload, using SQLx for PostgreSQL
+and SQLite. SQLite and Turso use `synchronous=FULL`; PostgreSQL and TypeDB use
+server settings. Values are rounded to whole operations per second.
+
+```mermaid
+xychart-beta
+    title "Balanced workload - 1 client"
+    x-axis ["Postgres", "SQLite", "Turso WAL", "Turso MVCC", "TypeDB"]
+    y-axis "Operations/sec" 0 --> 10000
+    bar [9199, 9400, 5083, 3571, 839]
+```
+
+```mermaid
+xychart-beta
+    title "Balanced workload - 8 clients"
+    x-axis ["Postgres", "SQLite", "Turso WAL", "Turso MVCC", "TypeDB"]
+    y-axis "Operations/sec" 0 --> 50000
+    bar [45200, 9143, 4594, 5943, 5256]
+```
+
 SQL table relationships (edge labels show foreign-key columns):
 
 ```mermaid
