@@ -1,5 +1,5 @@
 [package]
-name = "pg-vs-sqlx-vs-truso"
+name = "rust-todo-database-benchmark"
 version = "0.1.0"
 edition = "2024"
 
