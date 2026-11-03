@@ -1,5 +1,18 @@
 # PostgreSQL vs SQLite vs Turso vs TypeDB
 
+SQL table relationships (edge labels show foreign-key columns):
+
+```mermaid
+erDiagram
+    users ||..o{ todos : user_id
+    users ||..o{ tags : user_id
+    todos ||--o{ todo_tags : "user_id, todo_id"
+    tags ||--o{ todo_tags : "user_id, tag_id"
+```
+
+The composite foreign keys in `todo_tags` require each linked todo and tag to
+belong to the same user. TypeDB models these links with native relations.
+
 This project benchmarks four local databases through six Rust adapters and
 seven runnable configurations:
 
