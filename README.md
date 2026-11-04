@@ -5,17 +5,17 @@ and SQLite. SQLite and Turso use `synchronous=FULL`; PostgreSQL and TypeDB use
 server settings. Values are rounded to whole operations per second.
 
 ```mermaid
-xychart-beta
-    title "Balanced workload - 1 client"
-    x-axis ["Postgres", "SQLite", "Turso WAL", "Turso MVCC", "TypeDB"]
+xychart-beta horizontal
+    title "Balanced workload - 1 client (durable)"
+    x-axis ["Postgres SQLx", "SQLite SQLx WAL FULL", "Turso WAL FULL", "Turso MVCC FULL", "TypeDB"]
     y-axis "Operations/sec" 0 --> 10000
     bar [9199, 9400, 5083, 3571, 839]
 ```
 
 ```mermaid
-xychart-beta
-    title "Balanced workload - 8 clients"
-    x-axis ["Postgres", "SQLite", "Turso WAL", "Turso MVCC", "TypeDB"]
+xychart-beta horizontal
+    title "Balanced workload - 8 clients (durable)"
+    x-axis ["Postgres SQLx", "SQLite SQLx WAL FULL", "Turso WAL FULL", "Turso MVCC FULL", "TypeDB"]
     y-axis "Operations/sec" 0 --> 50000
     bar [45200, 9143, 4594, 5943, 5256]
 ```
@@ -64,41 +64,6 @@ TypeDB appear once because the profiles do not change their server settings.
 The six raw JSON reports, console logs, commands, host information, and
 aggregated medians are saved under `var/benchmarks-2026-11-03/`. The JSON
 reports also contain p50, p95, maximum latency, and operation counts.
-
-### Selected async configurations
-
-| Workload      | Adapter                 | Async | Mode            | 1 client ops/s | p99 (us) | 8 clients ops/s | p99 (us) |
-| ------------- | ----------------------- | ----- | --------------- | -------------: | -------: | --------------: | -------: |
-| Basic write   | PostgreSQL, SQLx        | Yes   | Server settings |        5,155.0 |      260 |        22,176.6 |      492 |
-| Basic write   | SQLite, SQLx            | Yes   | `NORMAL`        |       81,510.8 |       12 |        78,869.0 |    1,069 |
-| Basic write   | Turso, WAL              | Yes   | `NORMAL`        |       87,737.8 |       17 |        74,531.2 |       23 |
-| Basic write   | Turso, MVCC             | Yes   | `NORMAL`        |          561.8 |    5,947 |         1,924.2 |   17,551 |
-| Basic write   | TypeDB, `typedb-driver` | Yes   | Server settings |          943.8 |    1,394 |         4,343.0 |   11,559 |
-| Fan-out write | PostgreSQL, SQLx        | Yes   | Server settings |        3,977.0 |      323 |        20,888.0 |      534 |
-| Fan-out write | SQLite, SQLx            | Yes   | `NORMAL`        |       16,931.0 |      459 |        15,060.2 |    8,239 |
-| Fan-out write | Turso, WAL              | Yes   | `NORMAL`        |       16,383.4 |      756 |        14,602.6 |    1,374 |
-| Fan-out write | Turso, MVCC             | Yes   | `NORMAL`        |        9,836.4 |       78 |        44,303.6 |      248 |
-| Fan-out write | TypeDB, `typedb-driver` | Yes   | Server settings |          511.2 |    2,517 |         3,541.4 |   11,495 |
-| Retag         | PostgreSQL, SQLx        | Yes   | Server settings |        4,041.4 |      329 |        21,133.6 |      527 |
-| Retag         | SQLite, SQLx            | Yes   | `NORMAL`        |       25,586.6 |       62 |        23,450.4 |    1,284 |
-| Retag         | Turso, WAL              | Yes   | `NORMAL`        |       23,695.8 |       74 |        19,961.4 |      150 |
-| Retag         | Turso, MVCC             | Yes   | `NORMAL`        |          200.4 |   21,135 |           644.4 |   32,751 |
-| Retag         | TypeDB, `typedb-driver` | Yes   | Server settings |          474.4 |    2,285 |         3,561.0 |   11,511 |
-| Indexed read  | PostgreSQL, SQLx        | Yes   | Server settings |       49,245.4 |       30 |       267,683.6 |       47 |
-| Indexed read  | SQLite, SQLx            | Yes   | `NORMAL`        |       67,362.4 |       32 |        34,841.6 |      346 |
-| Indexed read  | Turso, WAL              | Yes   | `NORMAL`        |       80,520.2 |       13 |       588,370.8 |       17 |
-| Indexed read  | Turso, MVCC             | Yes   | `NORMAL`        |       49,735.0 |       21 |       152,974.4 |       75 |
-| Indexed read  | TypeDB, `typedb-driver` | Yes   | Server settings |        1,097.6 |    1,412 |         6,587.8 |    1,627 |
-| Join read     | PostgreSQL, SQLx        | Yes   | Server settings |       18,382.6 |       62 |        96,838.4 |      115 |
-| Join read     | SQLite, SQLx            | Yes   | `NORMAL`        |       23,176.2 |       56 |        12,805.8 |    1,003 |
-| Join read     | Turso, WAL              | Yes   | `NORMAL`        |       12,231.8 |       93 |        88,090.0 |      132 |
-| Join read     | Turso, MVCC             | Yes   | `NORMAL`        |        8,885.4 |      137 |        36,584.2 |      318 |
-| Join read     | TypeDB, `typedb-driver` | Yes   | Server settings |        1,252.2 |    1,218 |         7,792.2 |    1,349 |
-| Balanced      | PostgreSQL, SQLx        | Yes   | Server settings |        9,199.4 |      288 |        45,200.2 |      447 |
-| Balanced      | SQLite, SQLx            | Yes   | `NORMAL`        |       35,886.8 |       57 |        22,865.4 |    3,549 |
-| Balanced      | Turso, WAL              | Yes   | `NORMAL`        |       28,159.6 |      109 |        31,510.6 |    3,085 |
-| Balanced      | Turso, MVCC             | Yes   | `NORMAL`        |        6,841.6 |    1,174 |        20,861.8 |    3,331 |
-| Balanced      | TypeDB, `typedb-driver` | Yes   | Server settings |          839.4 |    2,167 |         5,256.2 |    2,799 |
 
 ### Detailed results
 
